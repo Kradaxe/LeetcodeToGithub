@@ -14,7 +14,7 @@ function isRetryable(err) {
 
 const SYNCED_FILE = path.join(__dirname, 'synced.json');
 const STATUS_FILE = path.join(__dirname, 'status.json');
-const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const POLL_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // Once we know LeetCode auth is dead, stop hammering it every poll — just
 // remind the user loudly instead, until they restart with fresh cookies.
@@ -52,7 +52,7 @@ async function pollOnce() {
   const syncedIds = loadSyncedIds();
   let recent;
   try {
-    recent = await withRetry(() => getRecentAcSubmissions(20), { shouldRetry: isRetryable });
+    recent = await withRetry(() => getRecentAcSubmissions(50), { shouldRetry: isRetryable });
   } catch (err) {
     if (err.status === 401 || err.status === 403) {
       authIsDead = true;
