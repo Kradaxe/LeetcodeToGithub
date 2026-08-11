@@ -84,18 +84,18 @@ async function pushSolution({ titleSlug, langKey, code, commitMessage }) {
   return result;
 }
 
-// Returns true if there's already a commit today that the bot didn't make itself
-// (i.e. a manual push) — used to skip auto-sync on days you pushed by hand.
-async function hasManualCommitToday() {
+// Returns true if there's already at least one commit today (any commit counts
+// as "green" on the contribution graph, including the bot's own past pushes).
+async function hasCommitToday() {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
   const sinceIso = startOfDay.toISOString();
 
   const commits = await githubRequest(
-    `/repos/${REPO_OWNER}/${REPO_NAME}/commits?since=${encodeURIComponent(sinceIso)}&per_page=100`
+    `/repos/${REPO_OWNER}/${REPO_NAME}/commits?since=${encodeURIComponent(sinceIso)}&per_page=1`
   );
 
-  return commits.some((c) => !c.commit.message.startsWith('Sync:'));
+  return commits.length > 0;
 }
 
-module.exports = { pushSolution, hasManualCommitToday };
+module.exports = { pushSolution, hasCommitToday };

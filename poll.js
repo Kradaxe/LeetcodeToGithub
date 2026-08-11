@@ -2,8 +2,8 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 
-const { getRecentAcSubmissions, getSubmissionDetails } = require('./leetcodeClient');
-const { pushSolution } = require('./pushToGithub');
+const { getAllAcceptedSubmissions, getSubmissionDetails } = require('./leetcodeClient');
+const { pushSolution, hasCommitToday } = require('./pushToGithub');
 const { withRetry } = require('./withRetry');
 
 // Don't waste retries on errors that won't fix themselves (auth expired, bad request, etc.)
@@ -14,7 +14,13 @@ function isRetryable(err) {
 
 const SYNCED_FILE = path.join(__dirname, 'synced.json');
 const STATUS_FILE = path.join(__dirname, 'status.json');
-const POLL_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+// Runs once daily at this local time.
+const CHECK_HOUR = 23;
+const CHECK_MINUTE = 30;
+
+// Fraction of the backlog to push per run (e.g. 0.2 = 20%).
+const PUSH_FRACTION = 0.2;
 
 // Once we know LeetCode auth is dead, stop hammering it every poll — just
 // remind the user loudly instead, until they restart with fresh cookies.
@@ -49,10 +55,21 @@ async function pollOnce() {
 
   console.log(`[${new Date().toLocaleString()}] Polling for new submissions...`);
 
+  try {
+    const alreadyGreen = await withRetry(() => hasCommitToday(), { shouldRetry: isRetryable });
+    if (alreadyGreen) {
+      console.log('Already have a commit today — nothing to do.');
+      writeStatus({ ok: true, skipped: 'already have a commit today' });
+      return;
+    }
+  } catch (err) {
+    console.error('Failed to check today\'s commits, proceeding with sync anyway:', err.message);
+  }
+
   const syncedIds = loadSyncedIds();
   let recent;
   try {
-    recent = await withRetry(() => getRecentAcSubmissions(50), { shouldRetry: isRetryable });
+    recent = await withRetry(() => getAllAcceptedSubmissions(100), { shouldRetry: isRetryable });
   } catch (err) {
     if (err.status === 401 || err.status === 403) {
       authIsDead = true;
@@ -72,9 +89,14 @@ async function pollOnce() {
     return;
   }
 
-  console.log(`Found ${newOnes.length} new submission(s).`);
+  // Only push a slice of the backlog per run (default 20%), so a big backlog
+  // doesn't dump everything in one commit burst — always push at least 1.
+  const chunkSize = Math.max(1, Math.ceil(newOnes.length * PUSH_FRACTION));
+  const toPush = newOnes.slice(0, chunkSize);
 
-  for (const submission of newOnes) {
+  console.log(`Found ${newOnes.length} new submission(s) — pushing ${toPush.length} this run.`);
+
+  for (const submission of toPush) {
     try {
       const details = await withRetry(() => getSubmissionDetails(submission.id), {
         shouldRetry: isRetryable,
@@ -101,9 +123,27 @@ async function pollOnce() {
   }
 }
 
-async function startPolling() {
-  await pollOnce(); // run once immediately on startup
-  setInterval(pollOnce, POLL_INTERVAL_MS);
+function msUntilNextCheckTime() {
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(CHECK_HOUR, CHECK_MINUTE, 0, 0);
+
+  if (next <= now) {
+    next.setDate(next.getDate() + 1); // today's slot already passed, aim for tomorrow
+  }
+
+  return next - now;
 }
 
-startPolling().catch((err) => console.error('Fatal error in polling loop:', err));
+function scheduleNextRun() {
+  const delay = msUntilNextCheckTime();
+  const runAt = new Date(Date.now() + delay);
+  console.log(`Next check scheduled for ${runAt.toLocaleString()}`);
+
+  setTimeout(async () => {
+    await pollOnce();
+    scheduleNextRun(); // reschedule for the same time tomorrow
+  }, delay);
+}
+
+scheduleNextRun();

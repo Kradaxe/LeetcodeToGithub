@@ -66,4 +66,49 @@ async function getSubmissionDetails(submissionId) {
   return data.submissionDetails;
 }
 
-module.exports = { getRecentAcSubmissions, getSubmissionDetails };
+// recentAcSubmissionList is hard-capped at 10 by LeetCode regardless of the
+// limit passed in. To see further back, we page through the full submission
+// history via submissionList (offset + lastKey cursor) and filter to accepted
+// ones ourselves, since the `status` filter enum isn't reliably documented.
+async function getAllAcceptedSubmissions(maxCount = 100) {
+  const query = `
+    query submissionList($offset: Int!, $limit: Int!, $lastKey: String) {
+      submissionList(offset: $offset, limit: $limit, lastKey: $lastKey) {
+        lastKey
+        hasNext
+        submissions {
+          id
+          title
+          titleSlug
+          statusDisplay
+          lang
+          timestamp
+        }
+      }
+    }
+  `;
+
+  const accepted = [];
+  let offset = 0;
+  let lastKey = null;
+  const PAGE_SIZE = 20;
+  const MAX_PAGES = 50; // hard safety cap so a bug can't loop forever
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const data = await leetcodeGraphQL(query, { offset, limit: PAGE_SIZE, lastKey });
+    const { submissions, hasNext, lastKey: nextKey } = data.submissionList;
+
+    for (const s of submissions) {
+      if (s.statusDisplay === 'Accepted') accepted.push(s);
+      if (accepted.length >= maxCount) return accepted;
+    }
+
+    if (!hasNext || submissions.length === 0) break;
+    offset += PAGE_SIZE;
+    lastKey = nextKey;
+  }
+
+  return accepted;
+}
+
+module.exports = { getRecentAcSubmissions, getSubmissionDetails, getAllAcceptedSubmissions };
