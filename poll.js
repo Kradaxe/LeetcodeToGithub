@@ -106,7 +106,7 @@ async function pollOnce() {
   for (const submission of toPush) {
     try {
       const details = await withRetry(() => getSubmissionDetails(submission.id), {
-        shouldRetry: isRetryable,
+        shouldRetry: isRetryable, 
       });
 
       await withRetry(
