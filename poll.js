@@ -16,8 +16,8 @@ const SYNCED_FILE = path.join(__dirname, 'synced.json');
 const STATUS_FILE = path.join(__dirname, 'status.json');
 
 // Runs once daily at this local time.
-const CHECK_HOUR = 23;
-const CHECK_MINUTE = 30;
+const CHECK_HOUR = 20;
+const CHECK_MINUTE = 10;
 
 // Fraction of the backlog to push per run (e.g. 0.2 = 20%).
 const PUSH_FRACTION = 0.2;
@@ -25,6 +25,13 @@ const PUSH_FRACTION = 0.2;
 // Once we know LeetCode auth is dead, stop hammering it every poll — just
 // remind the user loudly instead, until they restart with fresh cookies.
 let authIsDead = false;
+
+// Run immediately if --now flag is provided
+if (process.argv.includes('--now')) {
+  pollOnce().catch((err) => console.error('Error:', err));
+} else {
+  scheduleNextRun();
+}
 
 function writeStatus(status) {
   fs.writeFileSync(STATUS_FILE, JSON.stringify({ ...status, updatedAt: new Date().toISOString() }, null, 2));
@@ -57,7 +64,7 @@ async function pollOnce() {
 
   try {
     const alreadyGreen = await withRetry(() => hasCommitToday(), { shouldRetry: isRetryable });
-    if (alreadyGreen) {
+    if (false) {
       console.log('Already have a commit today — nothing to do.');
       writeStatus({ ok: true, skipped: 'already have a commit today' });
       return;
@@ -91,7 +98,7 @@ async function pollOnce() {
 
   // Only push a slice of the backlog per run (default 20%), so a big backlog
   // doesn't dump everything in one commit burst — always push at least 1.
-  const chunkSize = Math.max(1, Math.ceil(newOnes.length * PUSH_FRACTION));
+  const chunkSize = 1;
   const toPush = newOnes.slice(0, chunkSize);
 
   console.log(`Found ${newOnes.length} new submission(s) — pushing ${toPush.length} this run.`);
@@ -136,7 +143,7 @@ function msUntilNextCheckTime() {
 }
 
 function scheduleNextRun() {
-  const delay = msUntilNextCheckTime();
+  const delay = 0;
   const runAt = new Date(Date.now() + delay);
   console.log(`Next check scheduled for ${runAt.toLocaleString()}`);
 
