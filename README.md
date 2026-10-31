@@ -1,4 +1,4 @@
-# LeetCode → GitHub Auto-Sync
+# LeetCode → GitHub Auto-Sync :
 
 A small background tool that keeps my GitHub contribution graph honest — it checks once a day whether I've already pushed something, and if I haven't, it goes and grabs my recent LeetCode solutions and pushes them for me.
 
